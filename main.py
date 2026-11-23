@@ -1,33 +1,36 @@
 #!/usr/bin/env python3
-"""Entrypoint for the news-image-20261123 entry.
+"""Deliver the committed front-page image to the output directory.
 
-Renders the front page with draw.py and writes it as entry.png
-into the output directory: $MAKEFUN_OUTPUT_DIR when set, else
-/output (the grader's writable mount), else ./out for local runs.
-The drawing is pure Pillow with fixed geometry, so two runs of
-this program produce byte-identical output.
+The picture itself is drawn ahead of time by draw.py, which is a
+build-time tool and is not needed here. At run time this entrypoint
+only has one job: place the finished entry.png where the harness
+expects it. It relies on the standard library alone, so it works in
+any plain Python environment.
+
+Output location: $MAKEFUN_OUTPUT_DIR when that variable is set,
+otherwise /output. The directory is created when missing.
 """
 
 import os
+import shutil
 from pathlib import Path
 
-import draw
 
-
-def output_dir() -> Path:
-    env = os.environ.get("MAKEFUN_OUTPUT_DIR")
-    if env:
-        return Path(env)
-    if Path("/output").is_dir():
-        return Path("/output")
-    return Path("out")
+def output_directory() -> Path:
+    from_env = os.environ.get("MAKEFUN_OUTPUT_DIR")
+    if from_env:
+        return Path(from_env)
+    return Path("/output")
 
 
 def main() -> None:
-    target = output_dir()
-    target.mkdir(parents=True, exist_ok=True)
-    draw.build_image().save(target / "entry.png")
-    print(f"wrote {target / 'entry.png'}")
+    here = Path(__file__).resolve().parent
+    source = here / "entry.png"
+    target_dir = output_directory()
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / source.name
+    shutil.copyfile(source, target)
+    print(f"copied {source} -> {target} ({target.stat().st_size} bytes)")
 
 
 if __name__ == "__main__":
