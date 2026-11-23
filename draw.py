@@ -1,38 +1,43 @@
 #!/usr/bin/env python3
-"""Draw the front page of 23 November 2026 world news as one 1024x1024 PNG.
+"""THE NIGHT WIRE - one picture of Monday 23 November 2026.
 
-Original artwork drawn in code with Pillow. No photos, no downloads, no
-network. Deterministic: same input always produces the same PNG bytes.
-Run: python3 draw.py  ->  writes entry.png next to this script.
+An original front page drawn entirely in code with Pillow.
+Every panel, icon and rule below was written for this edition:
+a dark masthead, a wide climate lead, two war briefs, three
+short tiles and a wire ticker along the foot of the page.
 """
-import math
-import os
+
 from PIL import Image, ImageDraw, ImageFont
 
-W, H = 1024, 1024
-PAPER = (248, 243, 231)
-INK = (26, 26, 26)
-RED = (176, 42, 30)
-BLUE = (31, 78, 121)
-GREY = (90, 86, 78)
-LIGHT = (233, 226, 210)
+# ---------------------------------------------------------------- palette
+PAGE = (13, 20, 32)          # deep ink navy page
+CARD = (246, 240, 226)       # warm paper card
+CARD_DIM = (232, 224, 205)   # shaded paper for tiles
+INK = (20, 30, 44)           # text on paper
+CREAM = (246, 240, 226)      # text on navy
+RED = (214, 69, 51)          # wire red accent
+GOLD = (224, 168, 60)        # masthead gold
+TEAL = (46, 127, 134)        # sea teal
+SMOKE = (110, 116, 124)
 
-FONT_DIR = "/usr/share/fonts/truetype/dejavu"
-def font(name, size):
-    return ImageFont.truetype(os.path.join(FONT_DIR, name), size)
+SERIF = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
+SANS = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+SANS_B = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
-F_SERIF_B = lambda s: font("DejaVuSerif-Bold.ttf", s)
-F_SERIF = lambda s: font("DejaVuSerif.ttf", s)
-F_SANS_B = lambda s: font("DejaVuSans-Bold.ttf", s)
-F_SANS = lambda s: font("DejaVuSans.ttf", s)
+W = H = 1024
+MARGIN = 36
 
 
-def wrap(draw, text, fnt, max_w):
-    """Greedy word wrap; returns list of lines that fit max_w."""
+def font(path, size):
+    return ImageFont.truetype(path, size)
+
+
+def wrap(draw, text, fnt, width):
+    """Split text into lines that fit `width` pixels."""
     lines, cur = [], ""
     for word in text.split():
-        trial = (cur + " " + word).strip()
-        if draw.textlength(trial, font=fnt) <= max_w:
+        trial = word if not cur else cur + " " + word
+        if draw.textlength(trial, font=fnt) <= width:
             cur = trial
         else:
             if cur:
@@ -43,236 +48,223 @@ def wrap(draw, text, fnt, max_w):
     return lines
 
 
-def text_block(draw, x, y, lines, fnt, fill=INK, leading=None):
-    if leading is None:
-        leading = int(fnt.size * 1.28)
-    for ln in lines:
-        draw.text((x, y), ln, font=fnt, fill=fill)
-        y += leading
+def block(draw, xy, text, fnt, fill, width, leading=1.18):
+    """Draw wrapped text, return the y just below it."""
+    x, y = xy
+    step = int(fnt.size * leading)
+    for line in wrap(draw, text, fnt, width):
+        draw.text((x, y), line, font=fnt, fill=fill)
+        y += step
     return y
 
 
-def rule(draw, x0, x1, y, width=2, fill=INK):
-    draw.line([(x0, y), (x1, y)], fill=fill, width=width)
+def card(draw, box, fill=CARD, radius=14, outline=None, width=2):
+    draw.rounded_rectangle(box, radius=radius, fill=fill,
+                           outline=outline, width=width)
 
 
-def panel(draw, x, y, w, h, kicker, headline, body, head_size=30,
-          body_size=19, art=None, head_lines=2):
-    """A bordered news panel. art(d, x, y, w, h) draws the illustration."""
-    draw.rectangle([x, y, x + w, y + h], outline=INK, width=2)
-    pad = 14
-    cx = x + pad
-    cy = y + 10
-    draw.text((cx, cy), kicker, font=F_SANS_B(15), fill=RED)
-    cy += 24
-    hl = wrap(draw, headline, F_SERIF_B(head_size), w - 2 * pad)
-    cy = text_block(draw, cx, cy, hl[:head_lines], F_SERIF_B(head_size),
-                    leading=head_size + 6)
-    cy += 4
-    if art is not None:
-        art_h = 76 if h > 200 else 64
-        art(draw, x + pad, cy, w - 2 * pad, art_h)
-        cy += art_h + 8
-    bl = wrap(draw, body, F_SANS(body_size), w - 2 * pad)
-    # Cap the body so it never spills past the panel's bottom edge.
-    max_lines = max(1, (y + h - pad - cy) // (body_size + 6))
-    if len(bl) > max_lines:
-        bl = bl[:max_lines]
-        bl[-1] = bl[-1].rstrip(".,") + "…"
-    text_block(draw, cx, cy, bl, F_SANS(body_size),
-               leading=body_size + 6)
-    return y + h
+def kicker(draw, xy, text, colour=RED):
+    draw.text(xy, text, font=font(SANS_B, 21), fill=colour)
+    return xy[1] + 30
 
 
-# ---- illustrations (simple original pictograms, drawn in code) ----
-
-def art_cop31(d, x, y, w, h):
-    # A torn climate pact: a document split in two over a hot globe.
-    d.rectangle([x, y, x + w, y + h], fill=(214, 228, 240))
-    # globe, bottom left
-    cx, cy, r = x + 64, y + h // 2 + 6, 40
-    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(140, 190, 220),
-              outline=BLUE, width=3)
-    d.ellipse([cx - 24, cy - 16, cx - 2, cy + 6], fill=(90, 170, 90))
-    d.ellipse([cx + 4, cy + 8, cx + 28, cy + 28], fill=(90, 170, 90))
-    # heat waves rising from the globe
-    for i, wx in enumerate([cx - 30, cx, cx + 30]):
-        d.line([(wx, cy - r - 4), (wx + 6, cy - r - 16),
-                (wx - 2, cy - r - 26)], fill=RED, width=3)
-    # torn document, right side: two halves with a jagged gap
-    dx, dy, dw, dh = x + w - 128, y + 8, 112, h - 16
-    d.rectangle([dx, dy, dx + dw // 2 - 6, dy + dh], fill=(255, 255, 255),
-                outline=INK, width=2)
-    d.rectangle([dx + dw // 2 + 6, dy, dx + dw, dy + dh], fill=(255, 255, 255),
-                outline=INK, width=2)
-    # jagged tear edges
-    d.polygon([(dx + dw // 2 - 6, dy), (dx + dw // 2 + 4, dy + dh // 3),
-               (dx + dw // 2 - 4, dy + 2 * dh // 3),
-               (dx + dw // 2 + 6, dy + dh), (dx + dw // 2 - 6, dy + dh)],
-              fill=(255, 255, 255))
-    for i, ly in enumerate([dy + 14, dy + 34, dy + 54]):
-        d.line([(dx + 10, ly), (dx + dw // 2 - 16, ly)], fill=GREY, width=2)
-        d.line([(dx + dw // 2 + 16, ly), (dx + dw - 10, ly)], fill=GREY, width=2)
-    # big red X over the gap
-    gx = dx + dw // 2
-    d.line([(gx - 14, dy + dh - 26), (gx + 14, dy + dh - 52)], fill=RED, width=5)
-    d.line([(gx + 14, dy + dh - 26), (gx - 14, dy + dh - 52)], fill=RED, width=5)
-    d.text((x + 112, y + 8), "COP31", font=F_SANS_B(19), fill=BLUE)
-    d.text((x + 112, y + 34), "ANTALYA", font=F_SANS_B(19), fill=BLUE)
-    d.text((x + 112, y + 60), "NO DEAL", font=F_SANS_B(18), fill=RED)
+# ---------------------------------------------------------------- icons
+def icon_globe_crack(draw, cx, cy, r):
+    """A globe split by a jagged crack, ringed by a rising thermometer."""
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=TEAL, width=6)
+    # two simple land masses
+    draw.ellipse([cx - 52, cy - 38, cx - 6, cy + 2], fill=(96, 168, 92))
+    draw.ellipse([cx + 8, cy + 16, cx + 52, cy + 52], fill=(96, 168, 92))
+    # jagged crack down the middle
+    pts = [(cx + 2, cy - r + 6), (cx - 12, cy - 34), (cx + 10, cy - 6),
+           (cx - 10, cy + 26), (cx + 4, cy + r - 8)]
+    draw.line(pts, fill=RED, width=7, joint="curve")
+    # thermometer on the right
+    tx = cx + r + 26
+    draw.rounded_rectangle([tx - 9, cy - 58, tx + 9, cy + 30], radius=9,
+                           outline=INK, width=4)
+    draw.rectangle([tx - 4, cy - 6, tx + 4, cy + 30], fill=RED)
+    draw.ellipse([tx - 17, cy + 22, tx + 17, cy + 56], fill=RED)
 
 
-def art_gulf(d, x, y, w, h):
-    # A tanker on a burning strait: sea, hull, flames and smoke.
-    d.rectangle([x, y, x + w, y + h], fill=(186, 214, 232))
-    d.rectangle([x, y + h - 26, x + w, y + h], fill=(31, 78, 121))
-    # tanker hull
-    hx, hy = x + 18, y + h - 52
-    d.polygon([(hx, hy), (hx + w - 60, hy), (hx + w - 78, hy + 26),
-               (hx + 8, hy + 26)], fill=(120, 40, 30))
-    d.rectangle([hx + 30, hy - 22, hx + 70, hy], fill=(255, 255, 255),
-                outline=INK, width=2)
-    d.rectangle([hx + 78, hy - 14, hx + 96, hy], fill=(255, 255, 255),
-                outline=INK, width=2)
-    # funnel with smoke
-    d.rectangle([hx + w - 110, hy - 26, hx + w - 88, hy], fill=INK)
-    for i, (sx, sy, sr) in enumerate([(hx + w - 108, hy - 44, 8),
-                                      (hx + w - 96, hy - 58, 11),
-                                      (hx + w - 80, hy - 70, 13)]):
-        d.ellipse([sx, sy, sx + 2 * sr, sy + 2 * sr], fill=(90, 86, 78))
-    # flames on the water ahead of the tanker
-    fx = x + w - 52
-    for ang in range(0, 360, 45):
-        a = math.radians(ang)
-        d.line([(fx, y + h - 30),
-                (fx + 18 * math.cos(a), y + h - 30 + 18 * math.sin(a))],
-               fill=(255, 150, 40), width=4)
-    d.ellipse([fx - 9, y + h - 39, fx + 9, y + h - 21], fill=(255, 190, 60))
+def icon_tanker(draw, x, y, w):
+    """A low tanker silhouette on wave lines, burst at the stern."""
+    hull_top = y + 28
+    draw.polygon([(x, hull_top), (x + w, hull_top), (x + w - 30, hull_top + 24),
+                  (x + 26, hull_top + 24)], fill=(122, 52, 40))
+    draw.rectangle([x + 24, hull_top - 18, x + 88, hull_top], fill=INK)
+    draw.rectangle([x + w - 118, hull_top - 24, x + w - 78, hull_top],
+                   fill=INK)
+    draw.rectangle([x + w - 90, hull_top - 38, x + w - 83, hull_top - 24],
+                   fill=SMOKE)
+    # burst star at the stern
+    bx, by = x + w - 6, hull_top + 12
+    for dx, dy in [(0, -17), (12, -10), (16, 2), (10, 13), (0, 16),
+                   (-11, 11), (-16, 0), (-10, -12)]:
+        draw.line([bx, by, bx + dx, by + dy], fill=GOLD, width=5)
+    draw.ellipse([bx - 6, by - 6, bx + 6, by + 6], fill=RED)
+    # waves
+    for row, off in [(hull_top + 34, 0), (hull_top + 48, 18)]:
+        xx = x - 4 + off
+        while xx < x + w - 14:
+            draw.arc([xx, row, xx + 30, row + 12], 180, 360, fill=TEAL, width=4)
+            xx += 32
 
 
-def art_kyiv(d, x, y, w, h):
-    # A damaged apartment block at night, drone overhead, searchlight.
-    d.rectangle([x, y, x + w, y + h], fill=(38, 44, 66))
-    # block, left, with a broken corner
-    bx, by, bw, bh = x + 10, y + 18, 110, h - 26
-    d.rectangle([bx, by, bx + bw, by + bh], fill=(16, 18, 28))
-    d.polygon([(bx + bw, by), (bx + bw + 16, by + 14), (bx + bw, by + 26)],
-              fill=(255, 150, 40))
-    for wy in range(by + 10, by + bh - 8, 16):
-        for wx in [bx + 10, bx + 34, bx + 58, bx + 82]:
-            d.rectangle([wx, wy, wx + 12, wy + 9], fill=(240, 200, 90))
-    # rubble at the base
-    d.polygon([(bx, by + bh), (bx + 40, by + bh - 14), (bx + 84, by + bh),
-               (bx + 120, by + bh - 10), (bx + 150, by + bh)],
-              fill=(90, 86, 78))
-    # drone silhouette, top right
-    dx, dy = x + w - 110, y + 10
-    d.ellipse([dx, dy, dx + 56, dy + 16], fill=(220, 220, 220))
-    d.line([(dx - 16, dy + 8), (dx + 72, dy + 8)], fill=(220, 220, 220),
-           width=4)
-    d.ellipse([dx - 16, dy, dx - 4, dy + 8], fill=(220, 220, 220))
-    d.ellipse([dx + 60, dy, dx + 72, dy + 8], fill=(220, 220, 220))
-    d.line([(dx + 28, dy + 16), (dx + 28, dy + 26)], fill=(220, 220, 220),
-           width=3)
-    # narrow searchlight beam from below
-    d.polygon([(x + w - 24, y + h), (x + w - 44, y + 44),
-               (x + w - 28, y + 44)], fill=(255, 240, 180))
-    d.text((x + 128, y + h - 24), "DYMER, KYIV REGION",
-           font=F_SANS_B(13), fill=(255, 255, 255))
+def icon_drone_block(draw, x, y, w):
+    """A five-storey block at night and a small quadcopter above it."""
+    bw = int(w * 0.52)
+    draw.rectangle([x, y + 14, x + bw, y + 84], fill=(38, 48, 66))
+    for r in range(3):
+        for c in range(4):
+            wx = x + 13 + c * 28
+            wy = y + 24 + r * 21
+            lit = (r * 4 + c) % 3 != 0
+            draw.rectangle([wx, wy, wx + 16, wy + 12],
+                           fill=GOLD if lit else (90, 100, 116))
+    # quadcopter
+    qx, qy = x + bw + 72, y + 26
+    draw.ellipse([qx - 16, qy - 8, qx + 16, qy + 8], fill=INK)
+    for dx, dy in [(-30, -14), (30, -14), (-30, 14), (30, 14)]:
+        draw.line([qx, qy, qx + dx, qy + dy], fill=INK, width=4)
+        draw.ellipse([qx + dx - 10, qy + dy - 4, qx + dx + 10, qy + dy + 4],
+                     outline=INK, width=3)
+    draw.polygon([(qx - 5, qy + 8), (qx + 5, qy + 8), (qx, qy + 24)],
+                 fill=RED)
 
 
-def main():
-    img = Image.new("RGB", (W, H), PAPER)
+def icon_flame(draw, cx, cy, s):
+    """A three-tongue flame for the factory fire tile."""
+    draw.polygon([(cx, cy - s), (cx + int(s * 0.55), cy + int(s * 0.3)),
+                  (cx + int(s * 0.3), cy + s), (cx - int(s * 0.3), cy + s),
+                  (cx - int(s * 0.55), cy + int(s * 0.3))], fill=RED)
+    draw.polygon([(cx, cy - int(s * 0.45)), (cx + int(s * 0.3), cy + int(s * 0.35)),
+                  (cx + int(s * 0.16), cy + s), (cx - int(s * 0.16), cy + s),
+                  (cx - int(s * 0.3), cy + int(s * 0.35))], fill=GOLD)
+    draw.ellipse([cx - int(s * 0.13), cy + int(s * 0.3),
+                  cx + int(s * 0.13), cy + s], fill=(250, 214, 130))
+
+
+def icon_cap(draw, cx, cy, s):
+    """A graduation cap for the exam-row tile."""
+    draw.polygon([(cx, cy - int(s * 0.35)), (cx + s, cy),
+                  (cx, cy + int(s * 0.35)), (cx - s, cy)], fill=INK)
+    draw.polygon([(cx - int(s * 0.5), cy + int(s * 0.18)),
+                  (cx + int(s * 0.5), cy + int(s * 0.18)),
+                  (cx + int(s * 0.5), cy + int(s * 0.62)),
+                  (cx - int(s * 0.5), cy + int(s * 0.62))], fill=(52, 66, 84))
+    draw.line([cx + s, cy, cx + s, cy + int(s * 0.66)], fill=GOLD, width=5)
+    draw.ellipse([cx + s - 6, cy + int(s * 0.62), cx + s + 6,
+                  cy + int(s * 0.62) + 14], fill=GOLD)
+
+
+def icon_plane(draw, cx, cy, s):
+    """A simple airliner seen from the front, for the outage tile."""
+    draw.polygon([(cx, cy - s), (cx + 10, cy - int(s * 0.2)),
+                  (cx + int(s * 0.95), cy + int(s * 0.28)),
+                  (cx + int(s * 0.95), cy + int(s * 0.5)),
+                  (cx + 10, cy + int(s * 0.34)), (cx + 10, cy + int(s * 0.72)),
+                  (cx + int(s * 0.3), cy + s), (cx, cy + int(s * 0.82)),
+                  (cx - int(s * 0.3), cy + s), (cx - 10, cy + int(s * 0.72)),
+                  (cx - 10, cy + int(s * 0.34)),
+                  (cx - int(s * 0.95), cy + int(s * 0.5)),
+                  (cx - int(s * 0.95), cy + int(s * 0.28)),
+                  (cx - 10, cy - int(s * 0.2))], fill=TEAL)
+
+
+# ---------------------------------------------------------------- page
+def build_image():
+    img = Image.new("RGB", (W, H), PAGE)
     d = ImageDraw.Draw(img)
-    M = 28
-    X0, X1 = M, W - M
 
-    # --- masthead ---
-    rule(d, X0, X1, 14, width=3)
-    title = "THE WORLD TODAY"
-    tw = d.textlength(title, font=F_SERIF_B(62))
-    d.text(((W - tw) / 2, 22), title, font=F_SERIF_B(62), fill=INK)
-    rule(d, X0, X1, 104, width=2)
-    date = "MONDAY, 23 NOVEMBER 2026"
-    dw = d.textlength(date, font=F_SANS_B(38))
-    d.text(((W - dw) / 2, 112), date, font=F_SANS_B(38), fill=RED)
-    tag = "One day's world news — in one picture"
-    tgw = d.textlength(tag, font=F_SERIF(20))
-    d.text(((W - tgw) / 2, 158), tag, font=F_SERIF(20), fill=GREY)
-    rule(d, X0, X1, 188, width=3)
-    rule(d, X0, X1, 192, width=1)
+    # --- masthead ------------------------------------------------------
+    d.rectangle([MARGIN, 26, W - MARGIN, 31], fill=GOLD)
+    title = "THE NIGHT WIRE"
+    tf = font(SERIF, 68)
+    tw = d.textlength(title, font=tf)
+    d.text(((W - tw) / 2, 44), title, font=tf, fill=CREAM)
+    sub = "MONDAY  ·  23 NOVEMBER 2026  ·  ONE DAY, ONE PICTURE"
+    sf = font(SANS_B, 25)
+    sw = d.textlength(sub, font=sf)
+    d.text(((W - sw) / 2, 130), sub, font=sf, fill=GOLD)
+    d.rectangle([MARGIN, 168, W - MARGIN, 173], fill=RED)
 
-    # --- lead story: COP31 collapses ---
-    ly, lh = 202, 200
-    d.rectangle([X0, ly, X1, ly + lh], outline=INK, width=2)
-    d.text((X0 + 14, ly + 10), "LEAD  •  CLIMATE", font=F_SANS_B(16), fill=RED)
-    head = "COP31 ends with no deal"
-    hl = wrap(d, head, F_SERIF_B(40), 560)
-    text_block(d, X0 + 14, ly + 36, hl, F_SERIF_B(40), leading=46)
-    body = ("The Antalya summit closed with no agreement after the EU and "
-            "others rejected a draft that never mentioned fossil fuels.")
-    bl = wrap(d, body, F_SANS(18), 560)
-    text_block(d, X0 + 14, ly + 36 + len(hl) * 46 + 8, bl, F_SANS(18),
-               leading=24)
-    art_cop31(d, X0 + 600, ly + 12, X1 - X0 - 614, lh - 24)
+    # --- lead: COP31 ----------------------------------------------------
+    top = 190
+    card(d, [MARGIN, top, W - MARGIN, top + 222])
+    x = MARGIN + 28
+    y = kicker(d, (x, top + 18), "LEAD  ·  CLIMATE — ANTALYA, TÜRKIYE")
+    y = block(d, (x, y + 2), "COP31 closes with no deal on fossil fuels",
+              font(SERIF, 38), INK, 600, leading=1.1)
+    block(d, (x, y + 8),
+          "The Antalya summit ended without agreement after the EU and "
+          "others rejected a draft text that never mentioned fossil fuels.",
+          font(SANS, 21), INK, 600, leading=1.2)
+    icon_globe_crack(d, 800, top + 110, 62)
 
-    # --- row 2: two stories ---
-    ry, rh = 414, 254
-    w2 = (X1 - X0 - 12) // 2
-    panel(d, X0, ry, w2, rh, "WAR  •  GULF",
-          "Iran hits Bahrain, tankers struck",
-          "Iran struck a civilian site in Bahrain, injuring 2, as two "
-          "tankers were hit in the Strait of Hormuz.",
-          head_size=27, body_size=16, art=art_gulf)
-    panel(d, X0 + w2 + 12, ry, w2, rh, "WAR  •  UKRAINE",
-          "14 missing after drone hits flats",
-          "A Russian drone hit a five-storey block in Dymer, near Kyiv; "
-          "Zelenskyy pressed the US for Patriot missiles.",
-          head_size=27, body_size=16, art=art_kyiv)
+    # --- two war briefs --------------------------------------------------
+    top2 = top + 238
+    half = (W - 2 * MARGIN - 20) // 2
+    card(d, [MARGIN, top2, MARGIN + half, top2 + 252])
+    card(d, [MARGIN + half + 20, top2, W - MARGIN, top2 + 252])
+    x = MARGIN + 24
+    y = kicker(d, (x, top2 + 16), "WAR  ·  THE GULF")
+    y = block(d, (x, y), "Iran hits Bahrain; two tankers struck",
+              font(SERIF, 28), INK, half - 48, leading=1.12)
+    icon_tanker(d, x, y + 4, half - 60)
+    block(d, (x, top2 + 204),
+          "A civilian site in Bahrain was hit, injuring 2; two tankers "
+          "struck in the Strait of Hormuz.", font(SANS, 18), INK,
+          half - 48, leading=1.2)
+    x = MARGIN + half + 44
+    y = kicker(d, (x, top2 + 16), "WAR  ·  UKRAINE")
+    y = block(d, (x, y), "14 missing after drone hits Kyiv flats",
+              font(SERIF, 28), INK, half - 48, leading=1.12)
+    icon_drone_block(d, x, y + 8, half - 60)
+    block(d, (x, top2 + 204),
+          "A Russian drone hit a block in Dymer, near Kyiv; Zelenskyy "
+          "pressed the US for Patriots.",
+          font(SANS, 18), INK, half - 48, leading=1.2)
 
-    # --- row 3: three stories (text only, no art: keeps them legible) ---
-    ry3, rh3 = 680, 192
-    w3 = (X1 - X0 - 24) // 3
-    panel(d, X0, ry3, w3, rh3, "ASIA  •  INDONESIA",
-          "7 bodies found, 50 missing in factory fire",
-          "Rescuers searched a burned candy factory in Cikande, Banten, "
-          "after Saturday's blaze.",
-          head_size=23, body_size=17, art=None)
-    panel(d, X0 + w3 + 12, ry3, w3, rh3, "ASIA  •  S. KOREA",
-          "Minister quits over AI exam row",
-          "Education chief Choi Kyo-jin resigned after AI anti-cheating "
-          "rules hit the college exam.",
-          head_size=23, body_size=17, art=None)
-    panel(d, X0 + 2 * (w3 + 12), ry3, w3, rh3, "USA  •  TRAVEL",
-          "Delta outage delays 1,000+ flights",
-          "A weight-and-balance failure grounded Delta flights before "
-          "Thanksgiving.",
-          head_size=23, body_size=17, art=None)
-
-    # --- footer: also today ---
-    fy = 884
-    rule(d, X0, X1, fy, width=3)
-    d.text((X0, fy + 8), "ALSO TODAY", font=F_SANS_B(16), fill=RED)
-    items = [
-        ("DIPLOMACY", "Nepal PM Balendra Shah held talks with PM Modi in "
-         "Delhi on his state visit."),
-        ("SPORT", "India posted a record 720/9 in the Wellington Test "
-         "against New Zealand."),
-        ("TECH", "Nations agreed at the UN to keep negotiating curbs on "
-         "lethal AI weapons."),
+    # --- three short tiles ----------------------------------------------
+    top3 = top2 + 268
+    third = (W - 2 * MARGIN - 40) // 3
+    tiles = [
+        ("ASIA  ·  INDONESIA", "7 bodies found, 50 missing in factory fire",
+         "Rescuers searched a burned candy factory in Cikande, Banten, "
+         "after Saturday's blaze.", icon_flame),
+        ("ASIA  ·  S. KOREA", "Minister quits over AI exam row",
+         "Education chief Choi Kyo-jin resigned after AI anti-cheating "
+         "rules hit the college entrance exam.", icon_cap),
+        ("USA  ·  TRAVEL", "Delta outage delays 1,000+ flights",
+         "A weight-and-balance failure grounded Delta flights across the "
+         "US before Thanksgiving.", icon_plane),
     ]
-    col_w = (X1 - X0) // 3
-    for i, (kick, txt) in enumerate(items):
-        cx = X0 + i * col_w
-        d.text((cx, fy + 34), kick, font=F_SANS_B(15), fill=BLUE)
-        bl = wrap(d, txt, F_SANS(16), col_w - 16)
-        text_block(d, cx, fy + 56, bl[:3], F_SANS(16), leading=21)
-    rule(d, X0, X1, H - 16, width=2)
+    for i, (kick, head, body, icon) in enumerate(tiles):
+        bx = MARGIN + i * (third + 20)
+        card(d, [bx, top3, bx + third, top3 + 190], fill=CARD_DIM)
+        y = kicker(d, (bx + 20, top3 + 14), kick)
+        icon(d, bx + third - 26, top3 + 28, 13)
+        y = block(d, (bx + 20, y), head, font(SERIF, 24), INK,
+                  third - 40, leading=1.12)
+        block(d, (bx + 20, y + 6), body, font(SANS, 17), INK,
+              third - 40, leading=1.2)
 
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entry.png")
-    img.save(out, "PNG", optimize=True)
-    print("wrote", out, os.path.getsize(out), "bytes")
+    # --- wire ticker ------------------------------------------------------
+    top4 = top3 + 206
+    d.rectangle([MARGIN, top4, W - MARGIN, top4 + 5], fill=GOLD)
+    y = kicker(d, (MARGIN, top4 + 14), "ALSO ON THE WIRE", colour=GOLD)
+    items = [
+        "DIPLOMACY — Nepal PM Balendra Shah held talks with PM Modi in Delhi.",
+        "SPORT — India posted a record 720/9 in the Wellington Test vs New Zealand.",
+        "TECH — UN talks continue on curbs for lethal AI weapons.",
+    ]
+    for it in items:
+        y = block(d, (MARGIN, y), "▸  " + it, font(SANS, 20), CREAM,
+                  W - 2 * MARGIN, leading=1.15) + 5
+    return img
 
 
 if __name__ == "__main__":
-    main()
+    build_image().save("entry.png")
+    print("wrote entry.png")
