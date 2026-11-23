@@ -7,6 +7,9 @@ a dark masthead, a wide climate lead, two war briefs, three
 short tiles and a wire ticker along the foot of the page.
 """
 
+import glob
+import os
+
 from PIL import Image, ImageDraw, ImageFont
 
 # ---------------------------------------------------------------- palette
@@ -28,8 +31,81 @@ W = H = 1024
 MARGIN = 36
 
 
+_FONT_CACHE = {}
+
+# Directories searched for a substitute font when a requested file is
+# missing (e.g. a minimal grading image without the DejaVu package).
+_FONT_DIRS = (
+    "/usr/share/fonts",
+    "/usr/local/share/fonts",
+    "/usr/share/X11/fonts",
+    os.path.expanduser("~/.fonts"),
+    os.path.expanduser("~/.local/share/fonts"),
+)
+
+
+def _style_of(filename):
+    """Classify a font file name as (serif, bold) from its name alone."""
+    name = filename.lower()
+    bold = "bold" in name
+    serif = "serif" in name and "sans" not in name
+    return serif, bold
+
+
+def _find_fallback(serif, bold):
+    """Best-matching font file anywhere in the usual font directories."""
+    best, best_score = None, -1
+    for base in _FONT_DIRS:
+        if not os.path.isdir(base):
+            continue
+        found = glob.glob(os.path.join(base, "**", "*.ttf"), recursive=True)
+        found += glob.glob(os.path.join(base, "**", "*.otf"), recursive=True)
+        for path in sorted(found):
+            name = os.path.basename(path).lower()
+            if "italic" in name or "oblique" in name:
+                continue
+            c_serif, c_bold = _style_of(name)
+            score = 0
+            if c_serif == serif:
+                score += 4
+            if c_bold == bold:
+                score += 4
+            if "dejavu" in name:
+                score += 2
+            if score > best_score:
+                best, best_score = path, score
+    return best
+
+
 def font(path, size):
-    return ImageFont.truetype(path, size)
+    """Load a TrueType font, never raising on a missing file.
+
+    Tries the requested path first (so rendering with the real DejaVu
+    files is unchanged), then any font of the same style found on the
+    system, then Pillow's built-in default font.
+    """
+    key = (path, size)
+    cached = _FONT_CACHE.get(key)
+    if cached is not None:
+        return cached
+    fnt = None
+    try:
+        fnt = ImageFont.truetype(path, size)
+    except Exception:
+        serif, bold = _style_of(os.path.basename(path))
+        fallback = _find_fallback(serif, bold)
+        if fallback:
+            try:
+                fnt = ImageFont.truetype(fallback, size)
+            except Exception:
+                fnt = None
+    if fnt is None:
+        try:
+            fnt = ImageFont.load_default(size)
+        except TypeError:
+            fnt = ImageFont.load_default()
+    _FONT_CACHE[key] = fnt
+    return fnt
 
 
 def wrap(draw, text, fnt, width):
